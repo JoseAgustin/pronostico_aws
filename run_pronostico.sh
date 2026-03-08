@@ -131,9 +131,13 @@ log_event() {
 format_seconds() {
     local total_seconds="${1:-0}"
     [[ $total_seconds -lt 0 ]] && total_seconds=0
-    local hours=$(( total_seconds / 3600 ))
-    local minutes=$(( (total_seconds % 3600) / 60 ))
-    local seconds=$(( total_seconds % 60 ))
+    # NOTA Bash 4.2: separar 'local' de la asignación aritmética.
+    # 'local var=$(( expr ))' con set -e aborta el script si el resultado es 0,
+    # porque 'local' propaga el exit code de la sustitución de comandos.
+    local hours minutes seconds
+    hours=$(( total_seconds / 3600 ))
+    minutes=$(( (total_seconds % 3600) / 60 ))
+    seconds=$(( total_seconds % 60 ))
     printf "%d:%02d:%02d" "$hours" "$minutes" "$seconds"
 }
 
@@ -243,12 +247,17 @@ _download_gfs_hour() {
 
         # Si hay más intentos disponibles, esperar antes del siguiente
         if [[ $attempt -lt $GFS_MAX_RETRIES ]]; then
-            local wait_min=$(( GFS_RETRY_WAIT / 60 ))
-            log_event "  ⏳ Esperando ${wait_min} minuto(s) (${GFS_RETRY_WAIT}s) antes del reintento..." "WARNING"
+            # NOTA Bash 4.2: separar 'local' de la asignación aritmética
+            local wait_min
+            wait_min=$(( GFS_RETRY_WAIT / 60 ))
+            log_event "  Esperando ${wait_min} minuto(s) (${GFS_RETRY_WAIT}s) antes del reintento..." "WARNING"
             sleep "$GFS_RETRY_WAIT"
         fi
 
-        (( attempt++ ))
+        # NOTA Bash 4.2 + set -e: (( attempt++ )) falla con exit code 1
+        # cuando attempt pasa de 0 a 1 (resultado 0 antes del incremento).
+        # Usar la forma segura: attempt=$(( attempt + 1 ))
+        attempt=$(( attempt + 1 ))
     done
 
     # Todos los intentos agotados: registrar fallo definitivo y abortar
@@ -281,7 +290,8 @@ run_gfs_download() {
 
     # Iterar sobre todas las horas de pronóstico en el intervalo configurado
     for hour in $(seq -f "%03g" 0 "$GFS_INTERVAL_HOURS" "$FORECAST_HOURS"); do
-        (( total_files++ ))
+        # NOTA Bash 4.2 + set -e: (( total_files++ )) aborta cuando total_files==0
+        total_files=$(( total_files + 1 ))
         # _download_gfs_hour aborta el pipeline si falla definitivamente
         _download_gfs_hour "$hour"
     done
