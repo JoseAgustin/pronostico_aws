@@ -20,20 +20,20 @@ El sistema está diseñado para **ejecución automática vía cron**, con énfas
 └─────────────────────────────────────────────────────────────────┘
 
   [PASO 1] Emisiones (background) ──────────────────────────┐
-                                                             │
+                                                            │
   [PASO 2] Descarga GFS (S3/NOAA) ◄─── sistema reintentos   │
-                │                                             │
-                ▼                                             │
-  [PASO 3] Pre-procesamiento WPS                             │
-           ├── link_grib.csh                                 │
-           ├── ungrib.exe                                     │
-           └── metgrid.exe                                   │
-                │                                             │
-                ▼                                             │
-  [PASO 4] Inicialización WRF                                │
-           └── real.exe (4 MPI)                              │
-                │                                             │
-                ▼                             ◄──────────────┘
+                │                                           │
+                ▼                                           │
+  [PASO 3] Pre-procesamiento WPS                            │
+           ├── link_grib.csh                                │
+           ├── ungrib.exe                                   │
+           └── metgrid.exe                                  │
+                │                                           │
+                ▼                                           │
+  [PASO 4] Inicialización WRF                               │
+           └── real.exe (4 MPI)                             │
+                │                                           │
+                ▼                             ◄─────────────┘
   [PASO 5] Sincroniza emisiones → wrf.exe (8 MPI)
                 │
                 ▼
@@ -45,11 +45,12 @@ El sistema está diseñado para **ejecución automática vía cron**, con énfas
 ## Requisitos del Sistema
 
 | Componente    | Versión mínima | Notas                                 |
-|---------------|---------------|---------------------------------------|
-| Bash          | 4.4+          | `set -euo pipefail` requiere bash ≥4  |
-| OpenMPI / MPICH | Cualquiera  | Compatible con el WRF compilado       |
-| GNU Coreutils | cualquiera    | `date`, `seq`, `bc`, `awk`            |
-| Linux         | kernel ≥3.x   | Probado en Amazon Linux 2 / CentOS 7  |
+|---------------|----------------|---------------------------------------|
+| Bash          | 4.4+           | `set -euo pipefail` requiere bash ≥4  |
+| OpenMPI / MPICH | Cualquiera   | Compatible con el WRF compilado       |
+| GNU Coreutils | cualquiera     | `date`, `seq`, `bc`, `awk`            |
+| Linux         | kernel ≥3.x    | Probado en Amazon Linux 2 / CentOS 7  |
+
 
 ### Hardware mínimo recomendado
 
