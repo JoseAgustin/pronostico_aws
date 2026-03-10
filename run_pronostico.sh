@@ -72,7 +72,10 @@ readonly GFS_INTERVAL_HOURS=3
 # Todas las fechas se derivan del momento de ejecución del script.
 # Para un pronóstico con corrida del ciclo 00Z del día en curso:
 readonly START_DATE_FMT=$(date +%Y-%m-%d_00:00:00)
-readonly END_DATE_FMT=$(date -d "${FORECAST_HOURS} hours" +%Y-%m-%d_%H:00:00)
+# END_DATE_FMT se calcula desde las 00:00 del día actual, sin importar
+# la hora real de ejecución del script (ej. cron a las 04:00).
+# "today 00:00 + N hours" ancla el cálculo al inicio del día del pronóstico.
+readonly END_DATE_FMT=$(date -d "$(date +%Y-%m-%d) 00:00 ${FORECAST_HOURS} hours" +%Y-%m-%d_%H:00:00)
 readonly GFS_DATE_YMD=$(date +%Y%m%d)
 readonly LOG_FILE="${LOG_DIR}/performance_$(date +%Y-%m-%d).log"
 
@@ -396,9 +399,9 @@ run_real() {
 	 start_month                         = $(date +%m),
 	 start_day                           = $(date +%d),
 	 start_hour                          = 00,   00,
-	 end_year                            = $(date -d "${FORECAST_HOURS} hours" +%Y),
-	 end_month                           = $(date -d "${FORECAST_HOURS} hours" +%m),
-	 end_day                             = $(date -d "${FORECAST_HOURS} hours" +%d),
+	 end_year                            = $(date -d "$(date +%Y-%m-%d) 00:00 ${FORECAST_HOURS} hours" +%Y),
+	 end_month                           = $(date -d "$(date +%Y-%m-%d) 00:00 ${FORECAST_HOURS} hours" +%m),
+	 end_day                             = $(date -d "$(date +%Y-%m-%d) 00:00 ${FORECAST_HOURS} hours" +%d),
 	 end_hour                            = 00,   00,
 	 interval_seconds                    = 10800,
 	 input_from_file                     = .true.,
@@ -610,23 +613,48 @@ run_wrf() {
     rm -f rsl.*
     log_event "Lanzando wrf.exe con ${WRF_NPROCS} procesadores MPI..." "INFO"
 
-    # /usr/bin/time -v captura métricas detalladas de uso de recursos del sistema
-    \time -v mpiexec -n "${WRF_NPROCS}" wrf.exe > salida 2>> "$LOG_FILE" || {
+    # \time -v escribe sus métricas en stderr del proceso time mismo.
+    # Con mpiexec en nodo único (sin SLURM), el stderr de \time y el stderr
+    # de los ranks MPI comparten el mismo fd 2, por lo que no es posible
+    # separarlos con redirecciones anidadas. El bloque {} { cmd 2>>LOG } 2>FILE
+    # hace que la redirección exterior sobreescriba la interior, quedando
+    # TODO el stderr en FILE y nada en LOG.
+    #
+    # Solución correcta y portable en Bash 4.2:
+    # Capturar TODO stderr (métricas de \time + stderr de wrf ranks) en un
+    # archivo temporal dedicado con una sola redirección simple "2>".
+    # Luego volcar ese archivo al LOG_FILE. Los errores de wrf también
+    # quedan capturados y disponibles para diagnóstico.
+    local time_metrics_file="${WRF_DIR}/.wrf_time_metrics"
+    rm -f "$time_metrics_file"
+
+    \time -v mpiexec -n "${WRF_NPROCS}" wrf.exe \
+        > salida \
+        2> "$time_metrics_file" || {
+        # Volcar métricas/errores al log antes de abortar
+        cat "$time_metrics_file" >> "$LOG_FILE"
         log_event "¡ERROR CRÍTICO! wrf.exe falló. Revisar rsl.error.* y ${LOG_FILE}" "ERROR"
         exit 1
     }
 
     # --- Captura y registro de métricas de rendimiento ---
     log_event "── Métricas de rendimiento WRF ──" "METRIC"
+
+    # Volcar contenido completo al LOG_FILE para trazabilidad total
+    cat "$time_metrics_file" >> "$LOG_FILE"
+
+    # Extraer valores individuales desde el archivo dedicado
     local wall_time user_time sys_time cpu_pct max_mem_kb max_mem_mb page_faults fs_out
-    wall_time=$(extract_metric "Elapsed (wall clock) time")
-    user_time=$(extract_metric "User time (seconds)")
-    sys_time=$(extract_metric "System time (seconds)")
-    cpu_pct=$(extract_metric "Percent of CPU this job got")
-    max_mem_kb=$(extract_metric "Maximum resident set size")
+    wall_time=$(grep "Elapsed (wall clock) time"            "$time_metrics_file" | awk '{print $NF}')
+    user_time=$(grep "User time (seconds)"                  "$time_metrics_file" | awk '{print $NF}')
+    sys_time=$(grep  "System time (seconds)"                "$time_metrics_file" | awk '{print $NF}')
+    cpu_pct=$(grep   "Percent of CPU this job got"          "$time_metrics_file" | awk '{print $NF}')
+    max_mem_kb=$(grep "Maximum resident set size"           "$time_metrics_file" | awk '{print $NF}')
     max_mem_mb=$(echo "${max_mem_kb:-0} / 1024" | bc)
-    page_faults=$(extract_metric "Major .page faults")
-    fs_out=$(extract_metric "File system outputs")
+    page_faults=$(grep "Major (requiring I/O) page faults" "$time_metrics_file" | awk '{print $NF}')
+    fs_out=$(grep    "File system outputs"                  "$time_metrics_file" | awk '{print $NF}')
+
+    rm -f "$time_metrics_file"
 
     log_event "Tiempo de ejecución (wall clock): ${wall_time}" "METRIC"
     log_event "Tiempo de usuario: ${user_time} s" "METRIC"
@@ -747,7 +775,7 @@ log_event "Etapa [Supervisión] completada en $(format_seconds $elapsed_seconds)
 total_elapsed=$(( SECONDS - PIPELINE_START_TIME ))
 log_event "╔══════════════════════════════════════════════════════════════╗" "OK"
 log_event "║   PIPELINE WRF-Chem FINALIZADO EXITOSAMENTE                 ║" "OK"
-log_event "║   Fecha: $(date +%Y-%m-%d %H:%M:%S)                          ║" "OK"
+log_event "║   Fecha: $(date +'%Y-%m-%d %H:%M:%S')                        ║" "OK"
 log_event "║   Tiempo total: $(format_seconds $total_elapsed) (H:MM:SS)            ║" "OK"
 log_event "╚══════════════════════════════════════════════════════════════╝" "OK"
 
