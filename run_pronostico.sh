@@ -568,7 +568,7 @@ run_real() {
 	 diagnostic_chem                     = 0,
 	/
 EOF
-
+    run_and_check rm met_em.d*
     # Enlazar archivos de condiciones de frontera interpoladas
     ln -sf "${WPS_DIR}/met_em.d"* .
     rm -f rsl.* wrfinput_d01 wrfbdy_d01
@@ -638,7 +638,7 @@ run_wrf() {
     }
 
     # --- Captura y registro de métricas de rendimiento ---
-    log_event "── Métricas de rendimiento WRF ──" "METRIC"
+    log_event "── Métricas de rendimiento WRF ──" "INFO"
 
     # Volcar contenido completo al LOG_FILE para trazabilidad total
     cat "$time_metrics_file" >> "$LOG_FILE"
@@ -660,9 +660,9 @@ run_wrf() {
     log_event "Tiempo de usuario: ${user_time} s" "METRIC"
     log_event "Tiempo de sistema: ${sys_time} s" "METRIC"
     log_event "Uso de CPU: ${cpu_pct}" "METRIC"
-    log_event "Memoria máxima: ${max_mem_mb} MB (${max_mem_kb} kB)" "METRIC"
+    log_event "Memoria máxima utilizada: ${max_mem_mb} MB (${max_mem_kb}kB)" "METRIC"
     log_event "Page faults: ${page_faults}" "METRIC"
-    log_event "Operaciones I/O (escritura): ${fs_out}" "METRIC"
+    log_event "Operaciones I/O: ${fs_out}" "METRIC"
 
     # --- Mover salidas al directorio de resultados ---
     mv wrfout_d01_* "$OUTPUT_DIR/" && \
@@ -683,9 +683,9 @@ run_wrf() {
 # =============================================================================
 
 log_event "╔══════════════════════════════════════════════════════════════╗" "INFO"
-log_event "║   INICIO DEL PIPELINE DE PRONÓSTICO WRF-Chem                ║" "INFO"
-log_event "║   Fecha: $(date +%Y-%m-%d)  Ciclo: 00Z                      ║" "INFO"
-log_event "║   Horizon: ${FORECAST_HOURS}h | Reintentos GFS: ${GFS_MAX_RETRIES} | Espera: $((GFS_RETRY_WAIT/60))min  ║" "INFO"
+log_event "║   INICIO DEL PIPELINE DE PRONÓSTICO WRF-Chem                 ║" "INFO"
+log_event "║   Fecha: $(date +%Y-%m-%d)  Ciclo: 00Z                              ║" "INFO"
+log_event "║   Horizon: ${FORECAST_HOURS}h | Reintentos GFS: ${GFS_MAX_RETRIES} | Espera: $((GFS_RETRY_WAIT/60))min            ║" "INFO"
 log_event "╚══════════════════════════════════════════════════════════════╝" "INFO"
 
 PIPELINE_START_TIME=$SECONDS
@@ -697,7 +697,7 @@ PIPELINE_START_TIME=$SECONDS
 # ---------------------------------------------------------------------------
 log_event "PASO 1: Lanzando cálculo de emisiones en segundo plano..." "INFO"
 cd "$EMIS_DIR"
-./ecacor.sh > "${LOG_DIR}/emisiones_$(date +%Y-%m-%d).log" 2>&1 &
+./ecacor.sh > "${LOG_DIR}/emisiones.log" 2>&1 &
 EMISS_PID=$!
 log_event "Proceso de emisiones lanzado (PID: ${EMISS_PID})." "INFO"
 
@@ -715,7 +715,7 @@ log_event "LD_LIBRARY_PATH configurado." "INFO"
 STAGE_START_TIME=$SECONDS
 run_gfs_download
 elapsed_seconds=$(( SECONDS - STAGE_START_TIME ))
-log_event "Etapa [Descarga GFS] completada en $(format_seconds $elapsed_seconds)." "METRIC"
+log_event "Etapa [Descarga GFS] completada en $(format_seconds $elapsed_seconds) (H:MM:SS)." "METRIC"
 
 # ---------------------------------------------------------------------------
 # PASO 3: Ejecución de WPS
@@ -723,7 +723,7 @@ log_event "Etapa [Descarga GFS] completada en $(format_seconds $elapsed_seconds)
 STAGE_START_TIME=$SECONDS
 run_wps
 elapsed_seconds=$(( SECONDS - STAGE_START_TIME ))
-log_event "Etapa [WPS] completada en $(format_seconds $elapsed_seconds)." "METRIC"
+log_event "Etapa [WPS] completada en $(format_seconds $elapsed_seconds) (H:MM:SS)." "METRIC"
 
 # ---------------------------------------------------------------------------
 # PASO 4: Carga de módulos para WRF y ejecución de real.exe
@@ -736,7 +736,7 @@ spack load /bjrwihg            # NetCDF-C
 STAGE_START_TIME=$SECONDS
 run_real
 elapsed_seconds=$(( SECONDS - STAGE_START_TIME ))
-log_event "Etapa [REAL] completada en $(format_seconds $elapsed_seconds)." "METRIC"
+log_event "Etapa [REAL] completada en $(format_seconds $elapsed_seconds) (H:MM:SS)." "METRIC"
 
 # ---------------------------------------------------------------------------
 # PASO 5: Sincronización con cálculo de emisiones y ejecución de WRF
@@ -757,7 +757,7 @@ fi
 STAGE_START_TIME=$SECONDS
 run_wrf
 elapsed_seconds=$(( SECONDS - STAGE_START_TIME ))
-log_event "Etapa [WRF] completada en $(format_seconds $elapsed_seconds)." "METRIC"
+log_event "Etapa [WRF] completada en $(format_seconds $elapsed_seconds) (H:MM:SS)." "METRIC"
 
 # ---------------------------------------------------------------------------
 # PASO 6: Análisis de supervisión y generación de reporte de eventos
@@ -767,16 +767,16 @@ STAGE_START_TIME=$SECONDS
 cd "$WORK_DIR"
 bash analiza2.sh >> "$LOG_FILE" 2>&1
 elapsed_seconds=$(( SECONDS - STAGE_START_TIME ))
-log_event "Etapa [Supervisión] completada en $(format_seconds $elapsed_seconds)." "METRIC"
+log_event "Etapa [Supervisión] completada en $(format_seconds $elapsed_seconds) (H:MM:SS)." "METRIC"
 
 # ---------------------------------------------------------------------------
 # RESUMEN FINAL DEL PIPELINE
 # ---------------------------------------------------------------------------
 total_elapsed=$(( SECONDS - PIPELINE_START_TIME ))
 log_event "╔══════════════════════════════════════════════════════════════╗" "OK"
-log_event "║   PIPELINE WRF-Chem FINALIZADO EXITOSAMENTE                 ║" "OK"
-log_event "║   Fecha: $(date +'%Y-%m-%d %H:%M:%S')                        ║" "OK"
-log_event "║   Tiempo total: $(format_seconds $total_elapsed) (H:MM:SS)            ║" "OK"
+log_event "║   PIPELINE WRF-Chem FINALIZADO EXITOSAMENTE                  ║" "OK"
+log_event "║   Fecha:  $(date +'%Y-%m-%d %H:%M:%S')                                ║" "OK"
+log_event "║   Tiempo total: $(format_seconds $total_elapsed) (H:MM:SS)                            ║" "OK"
 log_event "╚══════════════════════════════════════════════════════════════╝" "OK"
-
+log_event "Tiempo total del pronostico: $(format_seconds $total_elapsed_seconds) (H:MM:SS)." "METRIC"
 exit 0
